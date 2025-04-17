@@ -18,14 +18,21 @@ fn run_compiler(input_file: &str, output_file: &str, args: &Cli) {
     let mut source = String::new();
     file.read_to_string(&mut source).unwrap();
 
-    let lexed_succesfully = myc::lex(&source).all(|r| r.is_ok());
-
-    if !lexed_succesfully {
-        eprintln!("Lex Error: Found an invalid character");
-        exit(1);
-    }
+    let mut token_stream = myc::lex(&source);
 
     if args.lex {
+        let lexed_succesfully = token_stream.all(|r| r.is_ok());
+        if !lexed_succesfully {
+            eprintln!("Lex Error: Found an invalid character");
+            exit(1);
+        }
+
+        return;
+    }
+
+    let ast = myc::parse(token_stream);
+
+    if args.parse {
         return;
     }
 

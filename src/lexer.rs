@@ -121,6 +121,14 @@ pub enum Token {
     Semicolon,
 }
 
+pub fn identifier(s: impl Into<String>) -> Token {
+    Token::Identifier(s.into())
+}
+
+pub fn constant(i: i32) -> Token {
+    Token::Constant(i)
+}
+
 pub type Result<T> = std::result::Result<T, LexError>;
 
 #[derive(Debug)]

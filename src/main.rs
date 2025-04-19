@@ -21,9 +21,9 @@ fn run_compiler(input_file: &str, output_file: &str, args: &Cli) {
     let mut token_stream = myc::lex(&source);
 
     if args.lex {
-        let lexed_succesfully = token_stream.all(|r| r.is_ok());
+        let lexed_succesfully = token_stream.all(|t| !matches!(t, myc::lexer::Token::Invalid(_)));
         if !lexed_succesfully {
-            eprintln!("Lex Error: Found an invalid character");
+            eprintln!("Lex Error: Found an invalid token");
             exit(1);
         }
 

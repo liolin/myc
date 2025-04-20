@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::Display;
 use std::iter::Peekable;
 
-use crate::ast::{Expression, FunctionDefinition, Program, Return, Statement};
+use crate::ast::{Expression, FunctionDefinition, Program, Return, Statement, UnaryOperation};
 use crate::lexer;
 use crate::Token;
 
@@ -13,7 +13,9 @@ pub fn parse(token_stream: impl Iterator<Item = Token>) -> Result<Program> {
 
     let program = parser.parse_program();
     if !parser.is_empty() {
-        return Err(ParseError::UnexpectedToken);
+        return Err(ParseError::UnexpectedToken(
+            parser.bump().expect("should be checked by is_empty"),
+        ));
     }
     program
 }
@@ -31,8 +33,9 @@ impl<T: Iterator<Item = Token>> Parser<T> {
 
     fn parse_function_definition(&mut self) -> Result<FunctionDefinition> {
         self.bump_if_equal(&lexer::Token::Int)?;
-        let Some(Token::Identifier(name)) = self.bump() else {
-            return Err(ParseError::UnexpectedToken);
+        let t = self.bump().ok_or(ParseError::UnexpectedEOF)?;
+        let Token::Identifier(name) = t else {
+            return Err(ParseError::UnexpectedToken(t));
         };
         self.bump_if_equal(&lexer::Token::OpenParenthesis)?;
         self.bump_if_equal(&lexer::Token::Void)?;
@@ -56,11 +59,28 @@ impl<T: Iterator<Item = Token>> Parser<T> {
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
-        let Some(Token::Constant(n)) = self.bump() else {
-            return Err(ParseError::UnexpectedToken);
+        let t = self.bump().ok_or(ParseError::UnexpectedEOF)?;
+        let exp = match t {
+            Token::Constant(n) => Expression::Constant(n),
+            Token::OpenParenthesis => {
+                let exp = self.parse_expression()?;
+                self.bump_if_equal(&lexer::Token::CloseParenthesis)?;
+                exp
+            }
+            Token::Minus | Token::Tilde => self.parse_unary_operation(t)?,
+            t @ _ => return Err(ParseError::UnexpectedToken(t.clone())),
         };
-        let n = n.clone();
-        Ok(Expression::Constant(n))
+        Ok(exp)
+    }
+
+    fn parse_unary_operation(&mut self, token: Token) -> Result<Expression> {
+        let op = match token {
+            Token::Minus => UnaryOperation::Negate,
+            Token::Tilde => UnaryOperation::Complement,
+            t @ _ => return Err(ParseError::UnexpectedToken(t)),
+        };
+        let exp = self.parse_expression()?;
+        Ok(Expression::Unary(op, Box::new(exp)))
     }
 
     /// Checks if the `token_stream` is empty.
@@ -78,7 +98,7 @@ impl<T: Iterator<Item = Token>> Parser<T> {
     fn expect_token(&mut self, expected_token: &Token) -> Result<()> {
         let p = self.token_stream.peek().ok_or(ParseError::UnexpectedEOF)?;
         if p != expected_token {
-            return Err(ParseError::UnexpectedToken);
+            return Err(ParseError::UnexpectedToken(p.clone()));
         }
         Ok(())
     }
@@ -96,7 +116,7 @@ pub type Result<T> = std::result::Result<T, ParseError>;
 
 #[derive(Debug)]
 pub enum ParseError {
-    UnexpectedToken,
+    UnexpectedToken(Token),
     UnexpectedEOF,
     LexError,
 }
@@ -104,9 +124,9 @@ pub enum ParseError {
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            Self::UnexpectedToken => "found an unexpected token",
-            Self::UnexpectedEOF => "reached unexpected EOF",
-            Self::LexError => "encountered an lexing error",
+            Self::UnexpectedToken(t) => format!("found an unexpected token {t}"),
+            Self::UnexpectedEOF => "reached unexpected EOF".into(),
+            Self::LexError => "encountered an lexing error".into(),
         };
         write!(f, "{s}")
     }

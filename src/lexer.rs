@@ -1,4 +1,4 @@
-use std::str::Chars;
+use std::{fmt::Display, str::Chars};
 
 pub fn lex(source: &str) -> impl Iterator<Item = Token> {
     let mut chars = Cursor::new(source.chars());
@@ -41,6 +41,18 @@ impl<'a> Cursor<'a> {
             ';' => {
                 self.bump();
                 Token::Semicolon
+            }
+            '~' => {
+                self.bump();
+                Token::Tilde
+            }
+            '-' => {
+                if self.bump() == '-' {
+                    self.bump();
+                    Token::DoubleMinus
+                } else {
+                    Token::Minus
+                }
             }
             '0'..='9' => self.constant(),
             'a'..='z' => self.identifier(),
@@ -96,17 +108,22 @@ fn identifier_to_token(identifier: String) -> Token {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     Identifier(String),
     Constant(i32),
+
+    // Operators
+    Tilde,
+    Minus,
+    DoubleMinus,
 
     // Keywords
     Int,
     Void,
     Return,
 
-    // Things
+    // Punctuation
     OpenParenthesis,
     CloseParenthesis,
     OpenBrace,
@@ -114,6 +131,28 @@ pub enum Token {
     Semicolon,
 
     Invalid(String),
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let out = match self {
+            Self::Identifier(s) => s.clone(),
+            Self::Constant(n) => n.to_string(),
+            Self::Tilde => "~".into(),
+            Self::Minus => "-".into(),
+            Self::DoubleMinus => "--".into(),
+            Self::Int => "int".into(),
+            Self::Void => "void".into(),
+            Self::Return => "return".into(),
+            Self::OpenParenthesis => "(".into(),
+            Self::CloseParenthesis => ")".into(),
+            Self::OpenBrace => "{".into(),
+            Self::CloseBrace => "}".into(),
+            Self::Semicolon => ";".into(),
+            Self::Invalid(t) => format!("#InvalidToken({t})"),
+        };
+        write!(f, "{out}")
+    }
 }
 
 pub fn identifier(s: impl Into<String>) -> Token {
@@ -236,6 +275,27 @@ mod tests {
     }
 
     #[test]
+    fn lex_tilde() {
+        let source = "~";
+        let token = lex(source.into()).next().unwrap();
+        assert_eq!(Token::Tilde, token);
+    }
+
+    #[test]
+    fn lex_minus() {
+        let source = "-";
+        let token = lex(source.into()).next().unwrap();
+        assert_eq!(Token::Minus, token);
+    }
+
+    #[test]
+    fn lex_double_minus() {
+        let source = "--";
+        let token = lex(source.into()).next().unwrap();
+        assert_eq!(Token::DoubleMinus, token);
+    }
+
+    #[test]
     fn lex_simple_applcation() {
         let source = "int main(void){return 2;}";
         let tokens = lex(source.into()).map(|t| t).collect::<Vec<_>>();
@@ -257,8 +317,40 @@ mod tests {
     }
 
     #[test]
-    fn lex_blub() {
+    fn lex_with_spaces() {
         let source = "int main    (   void)   {   return  0   ;   }";
+        let lexed_successfully = lex(source.into()).all(|r| !matches!(r, Token::Invalid(_)));
+        assert!(lexed_successfully);
+    }
+
+    #[test]
+    fn lex_double_negation() {
+        let source = "int main (void) { return -(-2); }";
+        let tokens = lex(source.into()).collect::<Vec<_>>();
+        assert_eq!(
+            vec![
+                Token::Int,
+                Token::Identifier("main".into()),
+                Token::OpenParenthesis,
+                Token::Void,
+                Token::CloseParenthesis,
+                Token::OpenBrace,
+                Token::Return,
+                Token::Minus,
+                Token::OpenParenthesis,
+                Token::Minus,
+                Token::Constant(2),
+                Token::CloseParenthesis,
+                Token::Semicolon,
+                Token::CloseBrace
+            ],
+            tokens
+        );
+    }
+
+    #[test]
+    fn lex_blub() {
+        let source = "int main (void) { return return -((((10)))); }";
         let lexed_successfully = lex(source.into()).all(|r| !matches!(r, Token::Invalid(_)));
         assert!(lexed_successfully);
     }

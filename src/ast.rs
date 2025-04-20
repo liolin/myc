@@ -23,4 +23,11 @@ pub struct Return {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expression {
     Constant(i32),
+    Unary(UnaryOperation, Box<Expression>),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum UnaryOperation {
+    Complement,
+    Negate,
 }

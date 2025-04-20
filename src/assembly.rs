@@ -61,5 +61,6 @@ fn return_(statement: ast::Return) -> Vec<Instruction> {
 fn expression(expression: ast::Expression) -> Operand {
     match expression {
         ast::Expression::Constant(i) => Operand::Imm(i),
+        _ => panic!("Not supported yet"),
     }
 }

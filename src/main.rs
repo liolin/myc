@@ -33,7 +33,7 @@ fn run_compiler(input_file: &str, output_file: &str, args: &Cli) {
     let ast = myc::parse(token_stream);
 
     if ast.is_err() {
-        eprintln!("Parse error: ${}", ast.unwrap_err());
+        eprintln!("Parse error: {}", ast.unwrap_err());
         exit(1);
     }
 

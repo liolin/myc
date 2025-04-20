@@ -1,4 +1,6 @@
+pub mod assembly;
 pub mod ast;
+pub mod codegen;
 pub mod lexer;
 pub mod parser;
 
@@ -14,4 +16,10 @@ pub fn parse(
     parser::parse(token_stream)
 }
 
-pub fn compile(_source: &str) {}
+pub fn assembly(program: ast::Program) -> assembly::Program {
+    assembly::assembly(program)
+}
+
+pub fn codegen(program: assembly::Program) -> String {
+    codegen::codegen(program)
+}

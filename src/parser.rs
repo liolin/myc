@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::fmt::Display;
 use std::iter::Peekable;
 
 use crate::ast::{Expression, FunctionDefinition, Program, Return, Statement};
@@ -98,6 +100,19 @@ pub enum ParseError {
     UnexpectedEOF,
     LexError,
 }
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::UnexpectedToken => "found an unexpected token",
+            Self::UnexpectedEOF => "reached unexpected EOF",
+            Self::LexError => "encountered an lexing error",
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl Error for ParseError {}
 
 #[cfg(test)]
 mod tests {

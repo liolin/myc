@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::{
     fs::File,
-    io::Read,
+    io::{Read, Write},
     process::{exit, Command, ExitStatus},
 };
 
@@ -41,12 +41,15 @@ fn run_compiler(input_file: &str, output_file: &str, args: &Cli) {
         return;
     }
 
-    Command::new("cp")
-        .args(&[input_file, output_file])
-        .spawn()
-        .expect("Failed to run linker")
-        .wait()
-        .unwrap();
+    let assembly = myc::assembly(ast.expect("already checked previousley"));
+
+    if args.codegen {
+        return;
+    }
+
+    let code = myc::codegen(assembly);
+    let mut file = std::fs::File::create(output_file).unwrap();
+    writeln!(&mut file, "{code}").unwrap();
 }
 
 fn run_linker(input_file: &str, output_file: &str) -> std::io::Result<ExitStatus> {
@@ -78,7 +81,7 @@ fn main() {
     let c_file = cli.filename.clone();
     let i_file = format!("{}i", &c_file[..c_file.len() - 1]);
     let s_file = format!("{}s", &c_file[..c_file.len() - 1]);
-    let bin = format!("{}", &c_file[..c_file.len() - 1]);
+    let bin = format!("{}", &c_file[..c_file.len() - 2]);
 
     run_preprocessor(&c_file, &i_file).expect("Error during preprocessing");
     run_compiler(&i_file, &s_file, &cli);

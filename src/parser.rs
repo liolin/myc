@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::Display;
 use std::iter::Peekable;
 
-use crate::ast::{Expression, FunctionDefinition, Program, Return, Statement, UnaryOperation};
+use crate::ast::{Expression, FunctionDefinition, Program, Statement, UnaryOperation};
 use crate::lexer;
 use crate::Token;
 
@@ -55,7 +55,7 @@ impl<T: Iterator<Item = Token>> Parser<T> {
         let expression = self.parse_expression()?;
 
         self.bump_if_equal(&lexer::Token::Semicolon)?;
-        Ok(Statement::Return(Return { expression }))
+        Ok(Statement::Return(expression))
     }
 
     fn parse_expression(&mut self) -> Result<Expression> {
@@ -157,9 +157,7 @@ mod tests {
         let expected_ast = Program {
             function_definition: FunctionDefinition {
                 name: "main".into(),
-                body: Statement::Return(Return {
-                    expression: Expression::Constant(2),
-                }),
+                body: Statement::Return(Expression::Constant(2)),
             },
         };
 

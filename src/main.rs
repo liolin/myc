@@ -41,7 +41,13 @@ fn run_compiler(input_file: &str, output_file: &str, args: &Cli) {
         return;
     }
 
-    let assembly = myc::assembly(ast.expect("already checked previousley"));
+    let tacky = myc::tacky(ast.expect("already checked previousley"));
+
+    if args.tacky {
+        return;
+    }
+
+    let assembly = myc::assembly(tacky);
 
     if args.codegen {
         return;
@@ -70,6 +76,9 @@ struct Cli {
 
     #[arg(long)]
     parse: bool,
+
+    #[arg(long)]
+    tacky: bool,
 
     #[arg(long)]
     codegen: bool,

@@ -12,12 +12,7 @@ pub struct FunctionDefinition {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Statement {
-    Return(Return),
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Return {
-    pub expression: Expression,
+    Return(Expression),
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -98,6 +98,7 @@ impl TackyGen {
                 instructions.push(instruction);
                 dst
             }
+            _ => todo!(),
         }
     }
 

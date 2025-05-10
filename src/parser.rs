@@ -2,7 +2,9 @@ use std::error::Error;
 use std::fmt::Display;
 use std::iter::Peekable;
 
-use crate::ast::{Expression, FunctionDefinition, Program, Statement, UnaryOperation};
+use crate::ast::{
+    BinaryOperation, Expression, FunctionDefinition, Program, Statement, UnaryOperation,
+};
 use crate::lexer;
 use crate::Token;
 
@@ -52,23 +54,44 @@ impl<T: Iterator<Item = Token>> Parser<T> {
     fn parse_statement(&mut self) -> Result<Statement> {
         self.bump_if_equal(&lexer::Token::Return)?;
 
-        let expression = self.parse_expression()?;
+        let expression = self.parse_expression(0)?;
 
         self.bump_if_equal(&lexer::Token::Semicolon)?;
         Ok(Statement::Return(expression))
     }
 
-    fn parse_expression(&mut self) -> Result<Expression> {
+    fn parse_expression(&mut self, min_precedence: u32) -> Result<Expression> {
+        let mut left = self.parse_factor()?;
+        loop {
+            let next_token = self.token_stream.peek();
+            if next_token.is_none() || next_token.is_some_and(|t| !is_binary_operator(t)) {
+                break;
+            }
+
+            let next_token = next_token.expect("already checked");
+            let prec = precedence(&next_token);
+            if prec < min_precedence {
+                break;
+            }
+
+            let binary_operator = self.parse_binary_operation()?;
+            let right = Box::new(self.parse_expression(prec + 1)?);
+            left = Expression::Binary(binary_operator, Box::new(left), right);
+        }
+        Ok(left)
+    }
+
+    fn parse_factor(&mut self) -> Result<Expression> {
         let t = self.bump().ok_or(ParseError::UnexpectedEOF)?;
         let exp = match t {
             Token::Constant(n) => Expression::Constant(n),
+            Token::Minus | Token::Tilde => self.parse_unary_operation(t)?,
             Token::OpenParenthesis => {
-                let exp = self.parse_expression()?;
+                let exp = self.parse_expression(0)?;
                 self.bump_if_equal(&lexer::Token::CloseParenthesis)?;
                 exp
             }
-            Token::Minus | Token::Tilde => self.parse_unary_operation(t)?,
-            t @ _ => return Err(ParseError::UnexpectedToken(t.clone())),
+            t => return Err(ParseError::UnexpectedToken(t.clone())),
         };
         Ok(exp)
     }
@@ -79,8 +102,21 @@ impl<T: Iterator<Item = Token>> Parser<T> {
             Token::Tilde => UnaryOperation::Complement,
             t @ _ => return Err(ParseError::UnexpectedToken(t)),
         };
-        let exp = self.parse_expression()?;
+        let exp = self.parse_expression(0)?;
         Ok(Expression::Unary(op, Box::new(exp)))
+    }
+
+    fn parse_binary_operation(&mut self) -> Result<BinaryOperation> {
+        let token = self.bump().ok_or(ParseError::UnexpectedEOF)?;
+        let op = match token {
+            Token::Plus => BinaryOperation::Add,
+            Token::Minus => BinaryOperation::Subtract,
+            Token::Star => BinaryOperation::Multiply,
+            Token::Slash => BinaryOperation::Divide,
+            Token::Percent => BinaryOperation::Remainder,
+            _ => return Err(ParseError::UnexpectedToken(token)),
+        };
+        Ok(op)
     }
 
     /// Checks if the `token_stream` is empty.
@@ -109,6 +145,21 @@ impl<T: Iterator<Item = Token>> Parser<T> {
         Ok(self
             .bump()
             .expect("should be checked by `expect_token` and return early if None"))
+    }
+}
+
+fn is_binary_operator(token: &Token) -> bool {
+    match token {
+        Token::Minus | Token::Plus | Token::Star | Token::Slash | Token::Percent => true,
+        _ => false,
+    }
+}
+
+fn precedence(token: &Token) -> u32 {
+    match token {
+        Token::Star | Token::Slash | Token::Percent => 50,
+        Token::Minus | Token::Plus => 45,
+        _ => 0,
     }
 }
 
@@ -158,6 +209,115 @@ mod tests {
             function_definition: FunctionDefinition {
                 name: "main".into(),
                 body: Statement::Return(Expression::Constant(2)),
+            },
+        };
+
+        let ast = parse(token_stream).unwrap();
+        assert_eq!(ast, expected_ast);
+    }
+
+    #[test]
+    fn parse_unary_operation() {
+        let token_stream = vec![
+            Token::Int,
+            Token::Identifier("main".into()),
+            Token::OpenParenthesis,
+            Token::Void,
+            Token::CloseParenthesis,
+            Token::OpenBrace,
+            Token::Return,
+            Token::Minus,
+            Token::Constant(5),
+            Token::Semicolon,
+            Token::CloseBrace,
+        ]
+        .into_iter();
+
+        let expected_ast = Program {
+            function_definition: FunctionDefinition {
+                name: "main".into(),
+                body: Statement::Return(Expression::Unary(
+                    UnaryOperation::Negate,
+                    Box::new(Expression::Constant(5)),
+                )),
+            },
+        };
+
+        let ast = parse(token_stream).unwrap();
+        assert_eq!(ast, expected_ast);
+    }
+
+    #[test]
+    fn parse_binary_operation() {
+        let token_stream = vec![
+            Token::Int,
+            Token::Identifier("main".into()),
+            Token::OpenParenthesis,
+            Token::Void,
+            Token::CloseParenthesis,
+            Token::OpenBrace,
+            Token::Return,
+            Token::Constant(1),
+            Token::Minus,
+            Token::Constant(2),
+            Token::Minus,
+            Token::Constant(3),
+            Token::Semicolon,
+            Token::CloseBrace,
+        ]
+        .into_iter();
+
+        let expected_ast = Program {
+            function_definition: FunctionDefinition {
+                name: "main".into(),
+                body: Statement::Return(Expression::Binary(
+                    BinaryOperation::Subtract,
+                    Box::new(Expression::Binary(
+                        BinaryOperation::Subtract,
+                        Box::new(Expression::Constant(1)),
+                        Box::new(Expression::Constant(2)),
+                    )),
+                    Box::new(Expression::Constant(3)),
+                )),
+            },
+        };
+
+        let ast = parse(token_stream).unwrap();
+        assert_eq!(ast, expected_ast);
+    }
+
+    #[test]
+    fn parse_binary_precedence_operation() {
+        let token_stream = vec![
+            Token::Int,
+            Token::Identifier("main".into()),
+            Token::OpenParenthesis,
+            Token::Void,
+            Token::CloseParenthesis,
+            Token::OpenBrace,
+            Token::Return,
+            Token::Constant(1),
+            Token::Minus,
+            Token::Constant(2),
+            Token::Star,
+            Token::Constant(3),
+            Token::Semicolon,
+            Token::CloseBrace,
+        ]
+        .into_iter();
+
+        let expected_ast = Program {
+            function_definition: FunctionDefinition {
+                name: "main".into(),
+                body: Statement::Return(Expression::Binary(
+                    BinaryOperation::Subtract,
+                    Box::new(Expression::Constant(1)),
+                    Box::new(Expression::Binary(
+                        BinaryOperation::Multiply,
+                        Box::new(Expression::Constant(2)),
+                        Box::new(Expression::Constant(3)),
+                    )),
+                )),
             },
         };
 

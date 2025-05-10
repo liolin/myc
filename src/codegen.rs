@@ -34,6 +34,11 @@ fn instruction(instruction: assembly::Instruction) -> String {
         assembly::Instruction::AllocateStack(i) => {
             format!("\tsubq\t${i}, %rsp")
         }
+        assembly::Instruction::Binary { operator, src, dst } => {
+            format!("\t{}\t{}, {}", operator, src, dst)
+        }
+        assembly::Instruction::Idiv(r) => format!("\tidivl\t{}", r),
+        assembly::Instruction::Cdq => "cdq".into(),
         assembly::Instruction::Ret => "\tmovq\t%rbp, %rsp\n\tpopq\t%rbp\n\tret".into(),
     }
 }

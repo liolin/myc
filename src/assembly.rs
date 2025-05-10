@@ -21,6 +21,13 @@ pub enum Instruction {
         operator: UnaryOperator,
         operand: Operand,
     },
+    Binary {
+        operator: BinaryOperator,
+        src: Operand,
+        dst: Operand,
+    },
+    Idiv(Operand),
+    Cdq,
     AllocateStack(u32),
     Ret,
 }
@@ -44,6 +51,38 @@ impl Display for UnaryOperator {
         let out = match self {
             UnaryOperator::Neg => "negl",
             UnaryOperator::Not => "notl",
+        };
+        write!(f, "{out}")
+    }
+}
+
+pub enum BinaryOperator {
+    Add,
+    Sub,
+    Mult,
+}
+
+impl TryFrom<tacky::BinaryOperator> for BinaryOperator {
+    type Error = String;
+
+    fn try_from(value: tacky::BinaryOperator) -> Result<Self, Self::Error> {
+        match value {
+            tacky::BinaryOperator::Add => Ok(Self::Add),
+            tacky::BinaryOperator::Subtract => Ok(Self::Sub),
+            tacky::BinaryOperator::Multiply => Ok(Self::Mult),
+            // TODO: Fix blub strings
+            tacky::BinaryOperator::Divide => Err("blub".into()),
+            tacky::BinaryOperator::Remainder => Err("blub".into()),
+        }
+    }
+}
+
+impl Display for BinaryOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let out = match self {
+            BinaryOperator::Add => "addl",
+            BinaryOperator::Sub => "subl",
+            BinaryOperator::Mult => "imull",
         };
         write!(f, "{out}")
     }
@@ -81,14 +120,18 @@ impl Display for Operand {
 #[derive(Debug, Clone)]
 pub enum Register {
     AX,
+    DX,
     R10,
+    R11,
 }
 
 impl Display for Register {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let out = match self {
             Register::AX => "%eax",
+            Register::DX => "%edx",
             Register::R10 => "%r10d",
+            Register::R11 => "%r11d",
         };
 
         write!(f, "{out}")
@@ -135,12 +178,63 @@ fn instructions(is: Vec<tacky::Instruction>) -> Vec<Instruction> {
                 ]
             }
             tacky::Instruction::Binary {
+                operator: tacky::BinaryOperator::Divide,
+                left,
+                right,
+                dst,
+            } => {
+                vec![
+                    Instruction::Mov {
+                        src: left.into(),
+                        dst: Operand::Register(Register::AX),
+                    },
+                    Instruction::Cdq,
+                    Instruction::Idiv(right.into()),
+                    Instruction::Mov {
+                        src: Operand::Register(Register::AX),
+                        dst: dst.into(),
+                    },
+                ]
+            }
+            tacky::Instruction::Binary {
+                operator: tacky::BinaryOperator::Remainder,
+                left,
+                right,
+                dst,
+            } => {
+                vec![
+                    Instruction::Mov {
+                        src: left.into(),
+                        dst: Operand::Register(Register::AX),
+                    },
+                    Instruction::Cdq,
+                    Instruction::Idiv(right.into()),
+                    Instruction::Mov {
+                        src: Operand::Register(Register::DX),
+                        dst: dst.into(),
+                    },
+                ]
+            }
+            tacky::Instruction::Binary {
                 operator,
                 left,
                 right,
                 dst,
             } => {
-                todo!()
+                let dst: Operand = dst.into();
+                vec![
+                    Instruction::Mov {
+                        src: left.into(),
+                        dst: dst.clone(),
+                    },
+                    Instruction::Binary {
+                        operator: operator
+                            .try_into()
+                            .expect("invalid binary operators already processed"),
+                        src: right.into(),
+                        dst: dst,
+                    },
+                ]
             }
         })
         .collect()
@@ -165,7 +259,18 @@ fn replace_pseudo_registers(mut program: Program) -> (Program, u32) {
                 offset = of;
                 Instruction::Unary { operator, operand }
             }
-            i @ (Instruction::AllocateStack(_) | Instruction::Ret) => i,
+            Instruction::Binary { operator, src, dst } => {
+                let (src, of) = stack_offset(src, &mut map, offset);
+                let (dst, of) = stack_offset(dst, &mut map, of);
+                offset = of;
+                Instruction::Binary { operator, src, dst }
+            }
+            Instruction::Idiv(op) => {
+                let (op, of) = stack_offset(op, &mut map, offset);
+                offset = of;
+                Instruction::Idiv(op)
+            }
+            i @ (Instruction::AllocateStack(_) | Instruction::Ret | Instruction::Cdq) => i,
         })
         .collect::<Vec<_>>();
     (program, offset)
@@ -203,6 +308,53 @@ fn fixing_up(mut program: Program, stack_size: u32) -> Program {
                         src: Operand::Register(Register::R10),
                         dst,
                     },
+                ]
+            }
+            Instruction::Binary {
+                operator: operator @ (BinaryOperator::Add | BinaryOperator::Sub),
+                src: src @ Operand::Stack(_),
+                dst: dst @ Operand::Stack(_),
+            } => {
+                vec![
+                    Instruction::Mov {
+                        src,
+                        dst: Operand::Register(Register::R10),
+                    },
+                    Instruction::Binary {
+                        operator,
+                        src: Operand::Register(Register::R10),
+                        dst,
+                    },
+                ]
+            }
+            Instruction::Binary {
+                operator: operator @ BinaryOperator::Mult,
+                src: src @ Operand::Stack(_),
+                dst: dst @ Operand::Stack(_),
+            } => {
+                vec![
+                    Instruction::Mov {
+                        src: dst.clone(),
+                        dst: Operand::Register(Register::R11),
+                    },
+                    Instruction::Binary {
+                        operator,
+                        src,
+                        dst: Operand::Register(Register::R11),
+                    },
+                    Instruction::Mov {
+                        src: Operand::Register(Register::R11),
+                        dst,
+                    },
+                ]
+            }
+            Instruction::Idiv(op @ Operand::Imm(_)) => {
+                vec![
+                    Instruction::Mov {
+                        src: op,
+                        dst: Operand::Register(Register::R10),
+                    },
+                    Instruction::Idiv(Operand::Register(Register::R10)),
                 ]
             }
             i @ _ => vec![i],

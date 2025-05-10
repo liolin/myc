@@ -42,6 +42,22 @@ impl<'a> Cursor<'a> {
                 self.bump();
                 Token::Semicolon
             }
+            '+' => {
+                self.bump();
+                Token::Plus
+            }
+            '*' => {
+                self.bump();
+                Token::Star
+            }
+            '/' => {
+                self.bump();
+                Token::Slash
+            }
+            '%' => {
+                self.bump();
+                Token::Percent
+            }
             '~' => {
                 self.bump();
                 Token::Tilde
@@ -117,6 +133,10 @@ pub enum Token {
     Tilde,
     Minus,
     DoubleMinus,
+    Plus,
+    Star,
+    Slash,
+    Percent,
 
     // Keywords
     Int,
@@ -140,6 +160,10 @@ impl Display for Token {
             Self::Constant(n) => n.to_string(),
             Self::Tilde => "~".into(),
             Self::Minus => "-".into(),
+            Self::Plus => "+".into(),
+            Self::Star => "*".into(),
+            Self::Slash => "/".into(),
+            Self::Percent => "%".into(),
             Self::DoubleMinus => "--".into(),
             Self::Int => "int".into(),
             Self::Void => "void".into(),
@@ -293,6 +317,34 @@ mod tests {
         let source = "--";
         let token = lex(source.into()).next().unwrap();
         assert_eq!(Token::DoubleMinus, token);
+    }
+
+    #[test]
+    fn lex_plus() {
+        let source = "+";
+        let token = lex(source.into()).next().unwrap();
+        assert_eq!(Token::Plus, token);
+    }
+
+    #[test]
+    fn lex_star() {
+        let source = "*";
+        let token = lex(source.into()).next().unwrap();
+        assert_eq!(Token::Star, token);
+    }
+
+    #[test]
+    fn lex_slash() {
+        let source = "/";
+        let token = lex(source.into()).next().unwrap();
+        assert_eq!(Token::Slash, token);
+    }
+
+    #[test]
+    fn lex_percent() {
+        let source = "%";
+        let token = lex(source.into()).next().unwrap();
+        assert_eq!(Token::Percent, token);
     }
 
     #[test]

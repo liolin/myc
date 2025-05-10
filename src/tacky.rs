@@ -20,6 +20,12 @@ pub enum Instruction {
         src: Value,
         dst: Value,
     },
+    Binary {
+        operator: BinaryOperator,
+        left: Value,
+        right: Value,
+        dst: Value,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,6 +45,27 @@ impl From<ast::UnaryOperation> for UnaryOperator {
         match value {
             ast::UnaryOperation::Complement => Self::Complement,
             ast::UnaryOperation::Negate => Self::Negate,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+}
+
+impl From<ast::BinaryOperation> for BinaryOperator {
+    fn from(value: ast::BinaryOperation) -> Self {
+        match value {
+            ast::BinaryOperation::Add => Self::Add,
+            ast::BinaryOperation::Subtract => Self::Subtract,
+            ast::BinaryOperation::Multiply => Self::Multiply,
+            ast::BinaryOperation::Divide => Self::Divide,
+            ast::BinaryOperation::Remainder => Self::Remainder,
         }
     }
 }
@@ -98,7 +125,19 @@ impl TackyGen {
                 instructions.push(instruction);
                 dst
             }
-            _ => todo!(),
+            ast::Expression::Binary(op, left, right) => {
+                let left = self.expression(*left, instructions);
+                let right = self.expression(*right, instructions);
+                let dst = self.make_temporary();
+                let instruction = Instruction::Binary {
+                    operator: op.into(),
+                    left,
+                    right,
+                    dst: dst.clone(),
+                };
+                instructions.push(instruction);
+                dst
+            }
         }
     }
 
@@ -175,6 +214,95 @@ mod tests {
                     dst: Value::Var("__tmp.2".into())
                 },
                 Instruction::Return(Value::Var("__tmp.2".into()))
+            ]
+        )
+    }
+
+    #[test]
+    fn tacky_single_binary() {
+        let mut t = TackyGen::new();
+        let stmt = ast::Statement::Return(ast::Expression::Binary(
+            ast::BinaryOperation::Subtract,
+            Box::new(ast::Expression::Constant(1)),
+            Box::new(ast::Expression::Constant(2)),
+        ));
+        let i = t.instructions(stmt);
+        assert_eq!(
+            i,
+            vec![
+                Instruction::Binary {
+                    operator: BinaryOperator::Subtract,
+                    left: Value::Constant(1),
+                    right: Value::Constant(2),
+                    dst: Value::Var("__tmp.0".into())
+                },
+                Instruction::Return(Value::Var("__tmp.0".into()))
+            ]
+        )
+    }
+
+    #[test]
+    fn tacky_nested_binary() {
+        let mut t = TackyGen::new();
+        let stmt = ast::Statement::Return(ast::Expression::Binary(
+            ast::BinaryOperation::Subtract,
+            Box::new(ast::Expression::Binary(
+                ast::BinaryOperation::Subtract,
+                Box::new(ast::Expression::Constant(1)),
+                Box::new(ast::Expression::Constant(2)),
+            )),
+            Box::new(ast::Expression::Constant(3)),
+        ));
+        let i = t.instructions(stmt);
+        assert_eq!(
+            i,
+            vec![
+                Instruction::Binary {
+                    operator: BinaryOperator::Subtract,
+                    left: Value::Constant(1),
+                    right: Value::Constant(2),
+                    dst: Value::Var("__tmp.0".into())
+                },
+                Instruction::Binary {
+                    operator: BinaryOperator::Subtract,
+                    left: Value::Var("__tmp.0".into()),
+                    right: Value::Constant(3),
+                    dst: Value::Var("__tmp.1".into())
+                },
+                Instruction::Return(Value::Var("__tmp.1".into()))
+            ]
+        )
+    }
+
+    #[test]
+    fn tacky_nested_precedence_binary() {
+        let mut t = TackyGen::new();
+        let stmt = ast::Statement::Return(ast::Expression::Binary(
+            ast::BinaryOperation::Subtract,
+            Box::new(ast::Expression::Binary(
+                ast::BinaryOperation::Multiply,
+                Box::new(ast::Expression::Constant(2)),
+                Box::new(ast::Expression::Constant(3)),
+            )),
+            Box::new(ast::Expression::Constant(1)),
+        ));
+        let i = t.instructions(stmt);
+        assert_eq!(
+            i,
+            vec![
+                Instruction::Binary {
+                    operator: BinaryOperator::Multiply,
+                    left: Value::Constant(2),
+                    right: Value::Constant(3),
+                    dst: Value::Var("__tmp.0".into())
+                },
+                Instruction::Binary {
+                    operator: BinaryOperator::Subtract,
+                    left: Value::Var("__tmp.0".into()),
+                    right: Value::Constant(1),
+                    dst: Value::Var("__tmp.1".into())
+                },
+                Instruction::Return(Value::Var("__tmp.1".into()))
             ]
         )
     }

@@ -134,6 +134,14 @@ fn instructions(is: Vec<tacky::Instruction>) -> Vec<Instruction> {
                     },
                 ]
             }
+            tacky::Instruction::Binary {
+                operator,
+                left,
+                right,
+                dst,
+            } => {
+                todo!()
+            }
         })
         .collect()
 }
